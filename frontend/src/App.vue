@@ -30,22 +30,37 @@
     <div v-if="activeTab === 'learn'" class="grid grid-cols-2 gap-4">
       <div class="bg-gray-900 rounded-xl p-4 flex flex-col items-center gap-4">
         <h3 class="text-purple-300 font-bold">猜盲文</h3>
-        <div v-if="!store.quizChar">
+        <div v-if="store.phase === 'idle'">
           <button @click="store.generateQuiz()" class="bg-purple-500 px-6 py-3 rounded-lg text-lg hover:bg-purple-400">
             开始训练
           </button>
         </div>
         <div v-else class="flex flex-col items-center gap-3">
           <div class="text-7xl font-bold text-purple-400">{{ store.quizChar }}</div>
-          <div class="text-sm text-gray-400">点击下方 6 点阵选择对应盲文</div>
+          <div v-if="store.phase === 'answering'" class="text-sm text-gray-400">点击下方 6 点阵选择对应盲文</div>
+
+          <!-- 结果反馈：先停留展示对错与正确圆点，再由用户进入下一题 -->
+          <div v-if="store.phase === 'revealed' && store.lastResult"
+            class="w-full rounded-lg p-3 text-center font-bold"
+            :class="store.lastResult.correct ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'">
+            {{ store.lastResult.correct ? `回答正确：${store.lastResult.char}` : `回答错误：${store.lastResult.char} 的正确盲文是圆点 ${store.lastResult.correctDots.join(',') || '（无点）'}` }}
+          </div>
+
           <div class="grid grid-cols-2 gap-2 p-4 bg-gray-800 rounded-xl">
             <button v-for="d in 6" :key="d" @click="store.toggleDot(d)"
+              :disabled="store.phase === 'revealed'"
               class="w-14 h-14 rounded-full border-2 transition-all"
-              :class="store.selectedDots.includes(d) ? 'bg-purple-500 border-purple-400 scale-110' : 'bg-gray-700 border-gray-600 hover:border-purple-400'">
+              :class="dotClass(d)">
               <span class="text-xs">{{ d }}</span>
             </button>
           </div>
-          <button @click="store.checkQuizAnswer()" class="bg-purple-500 px-6 py-2 rounded hover:bg-purple-400">确认</button>
+
+          <button v-if="store.phase === 'answering'"
+            @click="store.submitQuizAnswer()"
+            class="bg-purple-500 px-6 py-2 rounded hover:bg-purple-400">确认</button>
+          <button v-else
+            @click="store.generateQuiz()"
+            class="bg-purple-500 px-6 py-2 rounded hover:bg-purple-400">下一题</button>
         </div>
       </div>
       <div class="bg-gray-900 rounded-xl p-4">
@@ -68,10 +83,15 @@
           </div>
         </div>
         <div class="space-y-1 max-h-48 overflow-y-auto">
-          <div v-for="(h, i) in store.history.slice(0, 20)" :key="i"
-            class="flex justify-between bg-gray-800 rounded p-2 text-sm"
+          <div v-if="!store.history.length" class="text-xs text-gray-500 text-center py-3">暂无作答记录</div>
+          <div v-for="h in store.history" :key="h.id"
+            class="flex justify-between items-center bg-gray-800 rounded p-2 text-sm"
             :class="h.correct ? 'border-l-4 border-green-500' : 'border-l-4 border-red-500'">
-            <span>{{ h.input }}</span><span>{{ h.correct ? '✓' : '✗' }}</span>
+            <span class="font-bold">{{ h.char }}</span>
+            <span class="text-xs text-gray-400">
+              选 {{ h.selected.join(',') || '—' }}<template v-if="!h.correct"> / 正确 {{ h.correctDots.join(',') || '无' }}</template>
+            </span>
+            <span>{{ h.correct ? '✓' : '✗' }}</span>
           </div>
         </div>
       </div>
@@ -109,6 +129,19 @@ const tabs = [
   { id: 'ref', label: '速查表' },
 ]
 const activeTab = ref('translate')
+
+function dotClass(d: number) {
+  if (store.phase === 'revealed' && store.lastResult) {
+    const isCorrect = store.lastResult.correctDots.includes(d)
+    const isPicked = store.lastResult.selected.includes(d)
+    if (isCorrect) return 'bg-green-500 border-green-400 scale-110 cursor-default'
+    if (isPicked) return 'bg-red-500 border-red-400 cursor-default'
+    return 'bg-gray-700 border-gray-600 cursor-default'
+  }
+  return store.selectedDots.includes(d)
+    ? 'bg-purple-500 border-purple-400 scale-110'
+    : 'bg-gray-700 border-gray-600 hover:border-purple-400'
+}
 
 function doExport() {
   const text = store.exportPDF()
